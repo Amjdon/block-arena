@@ -68,7 +68,7 @@ const api = {
   },
 };
 for (const name of ['multiplyBalls', 'spawnBalls', 'scalePaddle', 'ballSpeed', 'pierce', 'shield', 'laser', 'setPaddleColor',
-  'destroyAt', 'explode', 'destroyRandom', 'destroyColor', 'addScore', 'addLife', 'toast']) {
+  'destroyAt', 'explode', 'destroyRandom', 'destroyColor', 'addScore', 'addLife', 'toast', 'playSound', 'tone']) {
   api[name] = (...args) => cmd(name, ...args.map(a => (typeof a === 'string' ? a.slice(0, 120) : a)));
 }
 Object.freeze(api);

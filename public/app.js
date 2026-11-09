@@ -3,6 +3,12 @@ import { PixelEditor, fileToDataURL } from './pixel.js';
 import { MapEditor } from './editor.js';
 import { net } from './net.js';
 import { $, $$, esc, api, toast, profile, saveProfile } from './store.js';
+import { play, isMuted, setMuted, getVolume, setVolume, SOUND_NAMES } from './sound.js';
+
+const muteBtn = $('#muteBtn');
+const syncMute = () => { muteBtn.textContent = isMuted() ? '🔇' : '🔊'; };
+muteBtn.onclick = () => { setMuted(!isMuted()); syncMute(); if (!isMuted()) play('coin'); };
+syncMute();
 
 const state = { maps: [], items: {}, room: null, game: null, online: false, peers: {}, hudTimer: null };
 
@@ -173,6 +179,8 @@ api.destroyAt(col, row)
 api.cellAt(col, row)          // 'empty' | 'wall' | '#hex'
 api.setCell(col, row, 'wall' | '#ff0000' | 0)
 api.setPaddleColor('#00ff00', 5000)
+api.playSound('coin')          // أصوات: ${SOUND_NAMES.join(', ')}
+api.tone(440, 200, 'square')   // نغمة: تردد Hz، مدة ms، sine/square/triangle/sawtooth
 api.setBall(0, { vx: 0, vy: -6 })  // تعديل كورة
 api.after(ms, () => {...})    // بعد وقت
 api.every(ms, () => {...}, times)
@@ -255,7 +263,9 @@ function renderPaddlePreview() {
   if (tex) { const img = new Image(); img.onload = () => { c.imageSmoothingEnabled = false; c.drawImage(img, x, y, w, h); }; img.src = tex; }
   c.fillStyle = '#fff'; c.beginPath(); c.arc(160, 26, 6, 0, 7); c.fill();
 }
+$('#pfVolume').oninput = e => { setVolume(+e.target.value); if (isMuted()) { setMuted(false); syncMute(); } play('paddle'); };
 onShow.profile = () => {
+  $('#pfVolume').value = getVolume();
   $('#pfName').value = profile.name; $('#pfColor').value = profile.color;
   pfPix.load(profile.texture).then(renderPaddlePreview);
 };
@@ -325,11 +335,13 @@ net.on('room', async m => {
 });
 net.on('left', () => { state.room = null; });
 net.on('chat', m => {
+  play('chat');
   const log = $('#chatLog');
   log.insertAdjacentHTML('beforeend', `<div><b>${esc(m.name)}:</b> ${esc(m.msg)}</div>`);
   log.scrollTop = log.scrollHeight;
 });
 net.on('start', m => {
+  play('start');
   const hasCode = Object.values(m.items).some(it => !['multi3', 'wide', 'slow', 'fire', 'laser', 'shield', 'life', 'bomb'].includes(it.id));
   startGame(m.map, m.items, { online: true, seed: m.seed, players: m.players });
   if (hasCode) toast('ℹ الماب فيه أيتمز بكود مخصص (يشتغل في بيئة معزولة)');

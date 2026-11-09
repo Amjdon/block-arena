@@ -1,4 +1,5 @@
 // Game engine: grid of blocks (0 empty, 1 wall, 2+ = palette color), paddle, balls, falling items.
+import { play, playTone } from './sound.js';
 export const CELL = 10;
 const OPEN_SPACE = 230;   // empty play area under the board
 const MAX_BALLS = 250;
@@ -82,7 +83,7 @@ export class ItemSandbox {
 
 // Commands the sandboxed code may ask the host to perform.
 const ALLOWED_CMDS = new Set(['multiplyBalls', 'spawnBalls', 'scalePaddle', 'ballSpeed', 'pierce', 'shield', 'laser', 'setPaddleColor',
-  'setCell', 'setBall', 'destroyAt', 'explode', 'destroyRandom', 'destroyColor', 'addScore', 'addLife', 'toast']);
+  'setCell', 'setBall', 'destroyAt', 'explode', 'destroyRandom', 'destroyColor', 'addScore', 'addLife', 'toast', 'playSound', 'tone']);
 
 export function boardSize(map) {
   return { W: map.cols * CELL, H: map.rows * CELL + OPEN_SPACE };
@@ -170,7 +171,9 @@ export class Game {
       },
       toast(text) { g.opts.onToast?.(String(text).slice(0, 120)); },
       addScore(n = 1) { g.score += Math.max(-1e6, Math.min(1e6, Number(n) || 0)); },
-      addLife(n = 1) { g.lives = Math.max(1, Math.min(9, g.lives + (Number(n) || 0))); },
+      addLife(n = 1) { g.lives = Math.max(1, Math.min(9, g.lives + (Number(n) || 0))); if (n > 0) play('life'); },
+      playSound(name) { play(String(name)); },
+      tone(freq, ms, type) { playTone(freq, ms, type); },
       setBall(i, props) {
         const b = g.balls[i];
         if (!b || !props || typeof props !== 'object') return;
@@ -232,6 +235,7 @@ export class Game {
       },
       destroyAt(c, r) { if (c >= 0 && r >= 0 && c < g.cols && r < g.rows) g.destroy(r * g.cols + c, false); },
       explode(x, y, radius = 30) {
+        play('boom');
         const r2 = radius * radius;
         for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
           const dx = c * CELL + CELL / 2 - x, dy = r * CELL + CELL / 2 - y;
@@ -313,6 +317,7 @@ export class Game {
   }
 
   launch() {
+    if (this.balls.some(b => b.stuck)) play('launch');
     for (const b of this.balls) if (b.stuck) {
       b.stuck = false;
       const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.8;
@@ -358,6 +363,7 @@ export class Game {
     this.balls = this.balls.filter(b => !b.dead);
     if (!this.balls.length && !this.over) {
       this.lives--;
+      play('lose_life');
       this.opts.onToast?.(this.lives > 0 ? `💔 باقي ${this.lives}` : '');
       if (this.lives <= 0) return this.end(false);
       this.resetBall();
@@ -368,6 +374,7 @@ export class Game {
       if (d.y + 11 >= p.y && d.y - 11 <= p.y + p.h && d.x + 11 >= p.x && d.x - 11 <= p.x + p.w) {
         d.dead = true;
         this.sandbox.run(d.id, this.sandboxSnap());
+        play('item');
         this.opts.onItem?.(this.items[d.id]);
       } else if (d.y > this.H + 20) d.dead = true;
     }
@@ -375,6 +382,7 @@ export class Game {
 
     if (this.frame < this.laserUntil && this.frame % 15 === 0) {
       this.bullets.push({ x: p.x + 4, y: p.y }, { x: p.x + p.w - 4, y: p.y });
+      play('laser');
     }
     for (const bl of this.bullets) {
       bl.y -= 7;
@@ -399,7 +407,7 @@ export class Game {
     if (r < 0 || r >= this.rows || c < 0 || c >= this.cols) return false;
     const i = r * this.cols + c, v = this.cells[i];
     if (v === 0) return false;
-    if (v === 1) return true;
+    if (v === 1) { play('wall'); return true; }
     this.destroy(i, true);
     return !pierce;
   }
@@ -407,18 +415,19 @@ export class Game {
   moveBall(b, f, pierce) {
     const r = b.r, p = this.paddle;
     let nx = b.x + b.vx * f;
-    if (nx - r < 0) { nx = r; b.vx = Math.abs(b.vx); }
-    else if (nx + r > this.W) { nx = this.W - r; b.vx = -Math.abs(b.vx); }
+    if (nx - r < 0) { nx = r; b.vx = Math.abs(b.vx); play('edge'); }
+    else if (nx + r > this.W) { nx = this.W - r; b.vx = -Math.abs(b.vx); play('edge'); }
     else if (this.hit(nx + Math.sign(b.vx) * r, b.y, pierce)) { b.vx = -b.vx; nx = b.x; }
     b.x = nx;
     let ny = b.y + b.vy * f;
-    if (ny - r < 0) { ny = r; b.vy = Math.abs(b.vy); }
+    if (ny - r < 0) { ny = r; b.vy = Math.abs(b.vy); play('edge'); }
     else if (this.hit(b.x, ny + Math.sign(b.vy) * r, pierce)) { b.vy = -b.vy; ny = b.y; }
     b.y = ny;
     if (b.vy > 0 && b.y + r >= p.y && b.y - r <= p.y + p.h && b.x >= p.x - r && b.x <= p.x + p.w + r) {
       const rel = Math.max(-1, Math.min(1, (b.x - (p.x + p.w / 2)) / (p.w / 2)));
       const a = rel * 1.1, s = Math.hypot(b.vx, b.vy);
       b.vx = Math.sin(a) * s; b.vy = -Math.cos(a) * s; b.y = p.y - r;
+      this.combo = 0; play('paddle');
     }
     if (this.frame < this.shieldUntil && b.vy > 0 && b.y + r >= this.H - 6) b.vy = -Math.abs(b.vy);
     if (b.y - r > this.H) b.dead = true;
@@ -428,6 +437,7 @@ export class Game {
     const v = this.cells[i];
     if (v < 2) return;
     this.cells[i] = 0; this.remaining--; this.score++;
+    this.combo = (this.combo || 0) + 1; play('brick', this.combo);
     this.redrawCell(i);
     const cx = (i % this.cols) * CELL + CELL / 2, cy = Math.floor(i / this.cols) * CELL + CELL / 2;
     const col = this.map.palette[v - 2];
@@ -440,6 +450,7 @@ export class Game {
 
   end(cleared) {
     this.over = true;
+    play(cleared ? 'win' : 'gameover');
     this.opts.onEnd?.({ score: this.score, cleared, lives: this.lives, time: Math.round((this.frame / FPS) * 10) / 10 });
   }
 

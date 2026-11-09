@@ -16,6 +16,7 @@
     <button data-screen="items">مختبر الأيتمز</button>
     <button data-screen="profile">المضرب</button>
   </nav>
+  <button id="muteBtn" title="الصوت">🔊</button>
   <div id="netStatus" class="pill">⚪ غير متصل</div>
 </header>
 
@@ -134,6 +135,7 @@
         <h2>🏓 المضرب حقك</h2>
         <label>اسمك <input id="pfName" maxlength="20"></label>
         <label>لون المضرب <input type="color" id="pfColor"></label>
+        <label>🔊 مستوى الصوت <input type="range" id="pfVolume" min="0" max="1" step="0.05"></label>
         <div class="sub">🎨 تكستشر المضرب (32×6) — ارسم أو ارفع صورة:</div>
         <div id="pfPix"></div>
         <div class="row2">

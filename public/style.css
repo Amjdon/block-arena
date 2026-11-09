@@ -30,6 +30,13 @@ header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; back
 nav { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
 nav button.active { background: var(--accent); border-color: var(--accent); }
 .pill { font-size: .85em; color: var(--muted); }
+#muteBtn { padding: 5px 9px; }
+@media (max-width: 700px) {
+  header { gap: 8px; padding: 8px 12px; }
+  .logo { flex: 1; }
+  nav { order: 3; flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  main { padding: 12px; }
+}
 
 main { padding: 16px; max-width: 1300px; margin: 0 auto; }
 .screen { display: none; }
