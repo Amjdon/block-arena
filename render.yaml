@@ -3,6 +3,7 @@ services:
     name: block-arena
     runtime: node
     plan: free
+    region: frankfurt  # closest Render region to the Gulf; keep the Supabase project in Frankfurt too
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /
