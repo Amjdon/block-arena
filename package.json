@@ -1,0 +1,17 @@
+{
+  "name": "block-arena",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Online block-breaking sandbox: custom maps, custom scripted items, solo / invite / public lobbies",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "pg": "^8.23.1",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: block-arena
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Postgres connection string (e.g. from Supabase). You enter it in the Render dashboard.
+      - key: DATABASE_URL
+        sync: false

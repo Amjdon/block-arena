@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>بلوك آرينا</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="logo">🧱 بلوك آرينا</div>
+  <nav>
+    <button data-screen="home">الرئيسية</button>
+    <button data-screen="sandbox">الساندبوكس</button>
+    <button data-screen="editor">صانع المابات</button>
+    <button data-screen="items">مختبر الأيتمز</button>
+    <button data-screen="profile">المضرب</button>
+  </nav>
+  <div id="netStatus" class="pill">⚪ غير متصل</div>
+</header>
+
+<main>
+  <!-- HOME -->
+  <section id="home" class="screen">
+    <div class="grid2">
+      <div class="card">
+        <h2>🎮 العب</h2>
+        <p class="sub">اختار ماب من الساندبوكس والعب سولو، أو سوّ غرفة وادعي أصحابك.</p>
+        <button class="primary big" data-go="sandbox">▶ العب سولو / اختار ماب</button>
+        <hr>
+        <h3>🌐 أونلاين</h3>
+        <div class="row2">
+          <button class="primary" id="createPrivate">🔒 غرفة خاصة (انفايت)</button>
+          <button class="primary" id="createPublic">🌍 لوبي عام</button>
+        </div>
+        <div class="row2">
+          <input id="joinCode" placeholder="كود الغرفة" maxlength="5" dir="ltr">
+          <button id="joinBtn">انضمام</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>🌍 اللوبيات العامة</h2>
+        <div id="lobbyList" class="list"><div class="sub">ما فيه لوبيات الحين…</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROOM -->
+  <section id="room" class="screen">
+    <div class="grid2">
+      <div class="card">
+        <h2>الغرفة <span id="roomCode" class="code" dir="ltr"></span></h2>
+        <div class="row2">
+          <button id="copyInvite">🔗 انسخ رابط الدعوة</button>
+          <label class="chk"><input type="checkbox" id="roomPublic"> لوبي عام</label>
+        </div>
+        <label>الماب <select id="roomMap"></select></label>
+        <div id="roomPlayers" class="list"></div>
+        <div class="row2">
+          <button class="primary big" id="startBtn">▶ ابدأ التحدي</button>
+          <button id="leaveBtn">🚪 اطلع</button>
+        </div>
+        <p class="sub" id="roomHint"></p>
+      </div>
+      <div class="card chat">
+        <h3>💬 الشات</h3>
+        <div id="chatLog"></div>
+        <form id="chatForm" class="row2"><input id="chatIn" maxlength="200" placeholder="اكتب…"><button>إرسال</button></form>
+      </div>
+    </div>
+  </section>
+
+  <!-- PLAY -->
+  <section id="play" class="screen">
+    <div class="play-wrap">
+      <div class="play-main">
+        <div class="hud"><span id="hudScore">0</span><span id="hudLives"></span><span id="hudLeft"></span><button id="exitGame">✖ خروج</button></div>
+        <div class="canvas-box" dir="ltr"><canvas id="gameCanvas"></canvas></div>
+      </div>
+      <aside id="peers"></aside>
+    </div>
+    <div id="overlay" class="overlay hidden"><div class="card" id="overlayBox"></div></div>
+  </section>
+
+  <!-- SANDBOX -->
+  <section id="sandbox" class="screen">
+    <div class="bar"><h2>📦 الساندبوكس</h2><input id="mapSearch" placeholder="بحث…"><button data-go="editor" class="primary">➕ سوّ ماب</button></div>
+    <div id="mapGrid" class="map-grid"></div>
+  </section>
+
+  <!-- EDITOR -->
+  <section id="editor" class="screen"><div id="editorRoot"></div></section>
+
+  <!-- ITEMS -->
+  <section id="items" class="screen">
+    <div class="items-wrap">
+      <div class="card">
+        <div class="bar"><h3>الأيتمز</h3><button id="itNew" class="primary">➕ جديد</button></div>
+        <div id="itList" class="list"></div>
+      </div>
+      <div class="card">
+        <div class="row2">
+          <label>الاسم <input id="itName" maxlength="30"></label>
+          <label>نص قصير (لو ما فيه صورة) <input id="itLabel" maxlength="4"></label>
+          <label>لون الخلفية <input type="color" id="itColor"></label>
+        </div>
+        <div class="row2 top">
+          <div>
+            <div class="sub">🎨 ارسم الأيقونة (16×16) أو ارفع صورة:</div>
+            <div id="itPix"></div>
+            <label class="btn">⬆ رفع صورة<input type="file" accept="image/*" id="itUpload" hidden></label>
+            <div class="sub">معاينة: <span id="itPreview" class="ico big"></span></div>
+          </div>
+          <div class="grow">
+            <div class="sub">🧠 كود السلوك (JavaScript) — ينفّذ لما تمسك الأيتم بالمضرب:</div>
+            <textarea id="itCode" dir="ltr" spellcheck="false"></textarea>
+            <details><summary>📖 الأوامر المتاحة (api)</summary><pre dir="ltr" id="apiDoc"></pre></details>
+          </div>
+        </div>
+        <div class="row2">
+          <button class="primary" id="itTest">▶ جرّبه</button>
+          <button class="primary" id="itSave">☁ احفظ في الساندبوكس</button>
+          <button id="itDelete">🗑 حذف</button>
+        </div>
+        <p class="sub" id="itHint"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROFILE / PADDLE -->
+  <section id="profile" class="screen">
+    <div class="grid2">
+      <div class="card">
+        <h2>🏓 المضرب حقك</h2>
+        <label>اسمك <input id="pfName" maxlength="20"></label>
+        <label>لون المضرب <input type="color" id="pfColor"></label>
+        <div class="sub">🎨 تكستشر المضرب (32×6) — ارسم أو ارفع صورة:</div>
+        <div id="pfPix"></div>
+        <div class="row2">
+          <label class="btn">⬆ رفع صورة<input type="file" accept="image/*" id="pfUpload" hidden></label>
+          <button class="primary" id="pfSave">💾 حفظ</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>معاينة</h3>
+        <canvas id="pfPreview" width="320" height="80"></canvas>
+      </div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
