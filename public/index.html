@@ -58,7 +58,8 @@
         </div>
         <label>الماب <select id="roomMap"></select></label>
         <div id="mazeOpts" class="hidden">
-          <label>طريقة الحركة <select id="roomMove"><option value="auto">🤖 تلقائي (راهن على لون)</option><option value="player">🎮 كل واحد يتحكم بمربعه</option></select></label>
+          <label>طريقة الحركة <select id="roomMove"><option value="ai">🧠 ذكي (راهن على لون)</option><option value="auto">🤖 عشوائي (راهن على لون)</option><option value="player">🎮 كل واحد يتحكم بمربعه</option></select></label>
+          <label class="chk"><input type="checkbox" id="roomStopWin"> ⏹ أول ما يفوز مربع يوقف السباق</label>
           <div class="sub" id="roomPickHint"></div>
           <div class="cpicks" id="roomPicks"></div>
         </div>

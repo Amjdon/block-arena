@@ -93,9 +93,10 @@ function buildRainbowMap() {
 }
 
 // Maze race maps from ASCII art. # wall . floor B breakable F finish G gate > boost ~ mud ? item 1-8 start
+// pushers: R right, L left, v down, ^ up. tools: s speed, g ghost, b bomb, f freeze
 function mazeFromArt(id, name, art, opts, updated) {
   const cols = Math.max(...art.map(l => l.length)), rows = art.length, cells = [], starts = [];
-  const code = { '#': 1, '.': 0, B: 2, F: 3, G: 4, '>': 5, '~': 6, '?': 7 };
+  const code = { '#': 1, '.': 0, B: 2, F: 3, G: 4, '>': 5, '~': 6, '?': 7, R: 8, L: 9, v: 10, '^': 11, s: 12, g: 13, b: 14, f: 15 };
   art.forEach((line, r) => {
     for (let c = 0; c < cols; c++) {
       const ch = line[c] || '#';
@@ -104,7 +105,7 @@ function mazeFromArt(id, name, art, opts, updated) {
   });
   return {
     id, type: 'maze', name, author: 'النظام', authorId: 'system', cols, rows, cells,
-    starts: starts.filter(x => x !== undefined), speed: 2.4, movement: 'auto', gateTime: 2, breakHp: 3, timeLimit: 180, updated, ...opts,
+    starts: starts.filter(x => x !== undefined), speed: 2.4, movement: 'ai', gateTime: 2, breakHp: 3, timeLimit: 180, updated, ...opts,
   };
 }
 
@@ -230,6 +231,22 @@ function buildMazes() {
       '#########.FF.#########',
       '######################',
     ], { speed: 2.4, breakHp: 3, timeLimit: 150 }, 8),
+    mazeFromArt('maze-press', 'المكبس', [
+      '####################',
+      '#12345678....s.....#',
+      '#.........f........#',
+      '#################..#',
+      '#.v...v...v...v....#',
+      '#..................#',
+      '#..................#',
+      '#........g.........#',
+      '#..#################',
+      '#................FF#',
+      '#.......b........FF#',
+      '#..................#',
+      '####^###^###^###^###',
+      '####################',
+    ], { speed: 2.4, pushRange: 3, pushSpeed: 1.3, timeLimit: 120 }, 9),
   ];
 }
 
@@ -260,14 +277,15 @@ function cleanMap(o) {
 
 function cleanMaze(o) {
   const cols = Math.round(num(o.cols, 6, 60, 0)), rows = Math.round(num(o.rows, 6, 60, 0));
-  if (!Array.isArray(o.cells) || o.cells.length !== cols * rows || !o.cells.every(v => Number.isInteger(v) && v >= 0 && v <= 7)) return 'خلايا المتاهة غير صحيحة';
+  if (!Array.isArray(o.cells) || o.cells.length !== cols * rows || !o.cells.every(v => Number.isInteger(v) && v >= 0 && v <= 15)) return 'خلايا المتاهة غير صحيحة';
   const starts = [...new Set((Array.isArray(o.starts) ? o.starts : []).filter(i => Number.isInteger(i) && i >= 0 && i < cols * rows))].slice(0, 8);
   if (!starts.length) return 'لازم نقطة بداية';
   if (!o.cells.includes(3)) return 'لازم خط نهاية';
   return {
     type: 'maze', name: str(o.name, 40) || 'متاهة', author: str(o.author, 24) || 'مجهول', authorId: str(o.authorId, 64),
-    cols, rows, cells: o.cells, starts, speed: num(o.speed, 1, 6, 2.4), movement: o.movement === 'player' ? 'player' : 'auto',
+    cols, rows, cells: o.cells, starts, speed: num(o.speed, 1, 6, 2.4), movement: ['player', 'ai'].includes(o.movement) ? o.movement : 'auto',
     gateTime: num(o.gateTime, 0, 30, 2), breakHp: Math.round(num(o.breakHp, 1, 20, 3)), timeLimit: num(o.timeLimit, 20, 600, 180),
+    pushRange: Math.round(num(o.pushRange, 1, 12, 3)), pushSpeed: num(o.pushSpeed, 0.3, 4, 1), stopOnWin: !!o.stopOnWin,
   };
 }
 
@@ -345,6 +363,7 @@ function roomInfo(room) {
   return {
     t: 'room', code: room.code, hostId: room.hostId, public: room.public, mapId: room.mapId, mapName: map ? map.name : '؟',
     mapType: map && map.type === 'maze' ? 'maze' : 'breakout', movement: room.movement || (map && map.movement) || 'auto',
+    stopOnWin: room.stopOnWin ?? !!(map && map.stopOnWin),
     started: room.started, players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, pick: p.pick ?? null })),
   };
 }
@@ -409,10 +428,13 @@ wss.on('connection', ws => {
       }
       case 'leave': leave(ws); send(ws, { t: 'left' }); break;
       case 'setMap':
-        if (isHost && !room.started && store.maps[m.mapId]) { room.mapId = m.mapId; room.movement = null; broadcast(room, roomInfo(room)); }
+        if (isHost && !room.started && store.maps[m.mapId]) { room.mapId = m.mapId; room.movement = null; room.stopOnWin = undefined; broadcast(room, roomInfo(room)); }
         break;
       case 'setMovement':
-        if (isHost && !room.started) { room.movement = m.movement === 'player' ? 'player' : 'auto'; broadcast(room, roomInfo(room)); }
+        if (isHost && !room.started) { room.movement = ['player', 'ai'].includes(m.movement) ? m.movement : 'auto'; broadcast(room, roomInfo(room)); }
+        break;
+      case 'setStopOnWin':
+        if (isHost && !room.started) { room.stopOnWin = !!m.on; broadcast(room, roomInfo(room)); }
         break;
       case 'pick':
         if (room && !room.started) { ws.pick = Number.isInteger(m.i) && m.i >= 0 && m.i < 8 ? m.i : null; broadcast(room, roomInfo(room)); }
@@ -426,7 +448,7 @@ wss.on('connection', ws => {
         const items = {}; for (const id of map.items || []) if (store.items[id]) items[id] = store.items[id];
         room.started = true; room.results = {};
         const info = roomInfo(room);
-        broadcast(room, { t: 'start', seed: Math.floor(Math.random() * 2 ** 31), map, items, players: info.players, movement: info.movement });
+        broadcast(room, { t: 'start', seed: Math.floor(Math.random() * 2 ** 31), map, items, players: info.players, movement: info.movement, stopOnWin: info.stopOnWin });
         broadcast(room, roomInfo(room));
         break;
       }

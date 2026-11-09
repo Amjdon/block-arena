@@ -125,3 +125,5 @@ td, th { padding: 6px; border-bottom: 1px solid var(--line); }
 .badge { background: #2e2e44; color: #c9c3ff; padding: 1px 6px; border-radius: 6px; font-size: .85em; }
 tr.me td { background: rgba(25, 181, 216, .15); }
 #overlay table .dot { vertical-align: middle; }
+
+label.chk.center { justify-content: center; }

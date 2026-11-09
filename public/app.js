@@ -94,22 +94,28 @@ const isMaze = m => m && m.type === 'maze';
 const colorDot = k => `<span class="dot" style="background:${RACER_COLORS[k % 8]}"></span>`;
 
 function chooseMaze(map, back = 'sandbox') {
-  let mv = map.movement || 'auto', pick = 0;
+  let mv = map.movement || 'ai', pick = 0;
   const n = Math.max(1, map.starts.length);
   overlay(`<h2>🏁 ${esc(map.name)}</h2>
     <div class="sub">طريقة الحركة</div>
-    <div class="row2 center"><button data-mv="auto">🤖 تلقائي</button><button data-mv="player">🎮 أتحكم</button></div>
+    <div class="row2 center"><button data-mv="ai">🧠 ذكي</button><button data-mv="auto">🤖 عشوائي</button><button data-mv="player">🎮 أتحكم</button></div>
     <div class="sub" id="mzHint"></div>
     <div class="cpicks">${Array.from({ length: n }, (_, k) => `<button class="cpick" data-k="${k}" style="background:${RACER_COLORS[k]}" title="${RACER_NAMES[k]}"></button>`).join('')}</div>
+    <label class="chk center"><input type="checkbox" id="mzStopWin" ${map.stopOnWin ? 'checked' : ''}> ⏹ أول ما يفوز مربع يوقف السباق</label>
     <div class="row2 center"><button class="primary" id="mzGo">▶ ابدأ</button><button id="mzCancel">إلغاء</button></div>`);
+  const hints = {
+    ai: p => `راهن على لون: ${RACER_NAMES[p]} — المربعات تدوّر طريق الفوز بنفسها`,
+    auto: p => `راهن على لون: ${RACER_NAMES[p]} — المربعات ترتد بشكل عشوائي`,
+    player: p => `لونك: ${RACER_NAMES[p]} — تحرّك بالأسهم/WASD أو اسحب بإصبعك (الباقين أذكياء)`,
+  };
   const sync = () => {
     $$('[data-mv]').forEach(b => b.classList.toggle('on', b.dataset.mv === mv));
     $$('.cpick').forEach(b => b.classList.toggle('on', +b.dataset.k === pick));
-    $('#mzHint').textContent = mv === 'auto' ? `راهن على لون: ${RACER_NAMES[pick]} — المربعات تتحرك لحالها` : `لونك: ${RACER_NAMES[pick]} — تحرّك بالأسهم/WASD أو اسحب بإصبعك`;
+    $('#mzHint').textContent = hints[mv](pick);
   };
   $$('[data-mv]').forEach(b => b.onclick = () => { mv = b.dataset.mv; sync(); });
   $$('.cpick').forEach(b => b.onclick = () => { pick = +b.dataset.k; sync(); });
-  $('#mzGo').onclick = () => startMaze(map, { movement: mv, pick, back });
+  $('#mzGo').onclick = () => startMaze(map, { movement: mv, pick, back, stopOnWin: $('#mzStopWin').checked });
   $('#mzCancel').onclick = () => $('#overlay').classList.add('hidden');
   sync();
 }
@@ -117,26 +123,28 @@ function chooseMaze(map, back = 'sandbox') {
 function raceTable(racers, highlight) {
   const order = [...racers].sort((a, b) => (a.place || 99) - (b.place || 99));
   const medals = ['🥇', '🥈', '🥉'];
-  return `<table>${order.map(r => `<tr class="${r.k === highlight ? 'me' : ''}"><td>${r.place ? medals[r.place - 1] || '#' + r.place : '❌'}</td><td>${colorDot(r.k)} ${esc(r.name)}</td><td>${r.time != null ? r.time + 'ث' : '—'}</td></tr>`).join('')}</table>`;
+  return `<table>${order.map(r => `<tr class="${r.k === highlight ? 'me' : ''}"><td>${r.place ? medals[r.place - 1] || '#' + r.place : r.dead ? '💀' : '❌'}</td><td>${colorDot(r.k)} ${esc(r.name)}</td><td>${r.time != null ? r.time + 'ث' : '—'}</td></tr>`).join('')}</table>`;
 }
 
-function startMaze(map, { online = false, seed, players = [], movement, pick = 0, back = 'sandbox' } = {}) {
+function startMaze(map, { online = false, seed, players = [], movement, pick = 0, back = 'sandbox', stopOnWin } = {}) {
   stopGame();
   show('play');
   state.online = online; state.back = back; state.peers = {};
   $('#peers').innerHTML = '';
-  movement = movement || map.movement || 'auto';
+  movement = movement || map.movement || 'ai';
+  stopOnWin = stopOnWin ?? !!map.stopOnWin;
+  const watch = movement !== 'player'; // squares move by themselves, players bet on a colour
   let racers;
-  if (movement === 'auto') racers = map.starts.map((_, k) => ({ color: RACER_COLORS[k], name: RACER_NAMES[k], kind: 'auto' }));
+  if (watch) racers = map.starts.map((_, k) => ({ color: RACER_COLORS[k], name: RACER_NAMES[k], kind: movement }));
   else if (online) racers = players.map((p, k) => ({ id: p.id, color: RACER_COLORS[k % 8], name: p.name, kind: p.id === net.id ? 'local' : 'remote' }));
-  else racers = map.starts.map((_, k) => ({ color: RACER_COLORS[k], name: k === pick ? profile.name : RACER_NAMES[k], kind: k === pick ? 'local' : 'auto' }));
+  else racers = map.starts.map((_, k) => ({ color: RACER_COLORS[k], name: k === pick ? profile.name : RACER_NAMES[k], kind: k === pick ? 'local' : 'ai' }));
   const pending = [];
   const game = new MazeGame($('#gameCanvas'), map, {
-    seed, movement, racers, online, pick: movement === 'auto' ? pick : -1,
+    seed, movement, racers, online, stopOnWin, pick: watch ? pick : -1,
     onToast: toast,
     onBreak: i => pending.push(i),
     onEnd: res => {
-      if (movement === 'auto') {
+      if (watch) {
         const mine = res.racers[pick] || {};
         if (online) {
           net.send('fin', { cleared: mine.place === 1, place: mine.place || 99, time: mine.time ?? 999, pick });
@@ -149,12 +157,12 @@ function startMaze(map, { online = false, seed, players = [], movement, pick = 0
         }
       } else if (online) {
         net.send('fin', { cleared: res.cleared, time: res.cleared ? res.time : 9998 });
-        overlay(`<h2>${res.cleared ? '🏁 وصلت!' : '⏰ خلص الوقت'}</h2><p>وقتك: <b>${res.cleared ? res.time + 'ث' : '—'}</b></p><p class="sub">ننتظر باقي اللاعبين…</p>`);
+        overlay(`<h2>${res.cleared ? '🏁 وصلت!' : res.dead ? '💀 انعصرت!' : stopOnWin ? '⏹ أحد فاز قبلك' : '⏰ خلص الوقت'}</h2><p>وقتك: <b>${res.cleared ? res.time + 'ث' : '—'}</b></p><p class="sub">ننتظر باقي اللاعبين…</p>`);
       } else {
         const me = res.racers.find(r => r.k === pick) || {};
-        overlay(`<h2>${me.place === 1 ? '🏆 فزت!' : res.cleared ? '🏁 وصلت!' : '⏰ خلص الوقت'}</h2><p>${res.cleared ? `المركز #${me.place} · ${res.time}ث` : ''}</p>${raceTable(res.racers, pick)}
+        overlay(`<h2>${me.place === 1 ? '🏆 فزت!' : res.cleared ? '🏁 وصلت!' : res.dead ? '💀 انعصرت!' : stopOnWin && game.placeN ? '⏹ مربع ثاني فاز' : '⏰ خلص الوقت'}</h2><p>${res.cleared ? `المركز #${me.place} · ${res.time}ث` : ''}</p>${raceTable(res.racers, pick)}
           <div class="row2 center"><button class="primary" id="ovRetry">🔁 مرة ثانية</button><button id="ovBack">رجوع</button></div>`);
-        $('#ovRetry').onclick = () => startMaze(map, { movement, pick, back });
+        $('#ovRetry').onclick = () => startMaze(map, { movement, pick, back, stopOnWin });
         $('#ovBack').onclick = () => show(back);
       }
     },
@@ -162,7 +170,7 @@ function startMaze(map, { online = false, seed, players = [], movement, pick = 0
   state.game = game;
   state.hudTimer = setInterval(() => {
     $('#hudScore').textContent = '⏱ ' + (game.t / 60).toFixed(1);
-    $('#hudLives').innerHTML = movement === 'auto' ? `${colorDot(pick)} ${esc(RACER_NAMES[pick])}` : '🎮';
+    $('#hudLives').innerHTML = watch ? `${colorDot(pick)} ${esc(RACER_NAMES[pick])}` : '🎮';
     $('#hudLeft').textContent = `🏁 ${game.racers.filter(r => r.done).length}/${game.racers.length}`;
     if (online && movement === 'player') net.send('st', { d: { ...game.snapshot(), k: pending.splice(0) } });
   }, 100);
@@ -390,6 +398,7 @@ $('#copyInvite').onclick = async () => {
 $('#roomPublic').onchange = e => net.send('setPublic', { public: e.target.checked });
 $('#roomMap').onchange = e => net.send('setMap', { mapId: e.target.value });
 $('#roomMove').onchange = e => net.send('setMovement', { movement: e.target.value });
+$('#roomStopWin').onchange = e => net.send('setStopOnWin', { on: e.target.checked });
 $('#startBtn').onclick = () => net.send('start');
 $('#chatForm').onsubmit = e => { e.preventDefault(); const v = $('#chatIn').value.trim(); if (v) net.send('chat', { msg: v }); $('#chatIn').value = ''; };
 
@@ -429,9 +438,10 @@ net.on('room', async m => {
     const mp = state.maps.find(x => x.id === m.mapId);
     const n = Math.max(1, mp?.starts?.length || 4);
     $('#roomMove').value = m.movement; $('#roomMove').disabled = !isHost || m.started;
+    $('#roomStopWin').checked = !!m.stopOnWin; $('#roomStopWin').disabled = !isHost || m.started;
     const me = m.players.find(p => p.id === net.id);
-    if (m.movement === 'auto') {
-      $('#roomPickHint').textContent = 'راهن على لون (المربعات تتحرك لحالها):';
+    if (m.movement !== 'player') {
+      $('#roomPickHint').textContent = 'راهن على لون (المربعات تتحرك بنفسها):';
       $('#roomPicks').innerHTML = Array.from({ length: n }, (_, k) => `<button class="cpick ${me?.pick === k ? 'on' : ''}" data-k="${k}" style="background:${RACER_COLORS[k]}" title="${RACER_NAMES[k]}"></button>`).join('');
       $$('#roomPicks .cpick').forEach(b => b.onclick = () => net.send('pick', { i: +b.dataset.k }));
     } else {
@@ -442,7 +452,7 @@ net.on('room', async m => {
   sel.disabled = !isHost || m.started;
   $('#startBtn').disabled = !isHost || m.started;
   $('#roomHint').textContent = isHost ? 'انت الهوست: اختار الماب وابدأ متى ما جهزتوا.' : 'ننتظر الهوست يبدأ…';
-  $('#roomPlayers').innerHTML = m.players.map((p, idx) => `<div class="li">${maze ? colorDot(m.movement === 'auto' ? (p.pick ?? idx) : idx) : `<span class="dot" style="background:${esc(p.color)}"></span>`}<div class="grow">${esc(p.name)}${p.id === net.id ? ' (انت)' : ''}</div>${p.id === m.hostId ? '👑' : ''}</div>`).join('');
+  $('#roomPlayers').innerHTML = m.players.map((p, idx) => `<div class="li">${maze ? colorDot(m.movement !== 'player' ? (p.pick ?? idx) : idx) : `<span class="dot" style="background:${esc(p.color)}"></span>`}<div class="grow">${esc(p.name)}${p.id === net.id ? ' (انت)' : ''}</div>${p.id === m.hostId ? '👑' : ''}</div>`).join('');
 });
 net.on('left', () => { state.room = null; });
 net.on('chat', m => {
@@ -456,7 +466,7 @@ net.on('start', m => {
   if (isMaze(m.map)) {
     const idx = m.players.findIndex(p => p.id === net.id);
     const me = m.players[idx];
-    return startMaze(m.map, { online: true, seed: m.seed, players: m.players, movement: m.movement, pick: me?.pick ?? (idx % Math.max(1, m.map.starts.length)) });
+    return startMaze(m.map, { online: true, seed: m.seed, players: m.players, movement: m.movement, stopOnWin: m.stopOnWin, pick: me?.pick ?? (idx % Math.max(1, m.map.starts.length)) });
   }
   const hasCode = Object.values(m.items).some(it => !['multi3', 'wide', 'slow', 'fire', 'laser', 'shield', 'life', 'bomb'].includes(it.id));
   startGame(m.map, m.items, { online: true, seed: m.seed, players: m.players });

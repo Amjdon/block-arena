@@ -10,7 +10,7 @@ export function blankMaze(cols = 20, rows = 20) {
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (!r || !c || r === rows - 1 || c === cols - 1) cells[r * cols + c] = T.WALL;
   const starts = [1, 2, 3, 4].map(k => cols + k);
   cells[(rows - 2) * cols + cols - 2] = T.FINISH;
-  return { type: 'maze', name: 'متاهة جديدة', cols, rows, cells, starts, speed: 2.4, movement: 'auto', gateTime: 2, breakHp: 3, timeLimit: 180 };
+  return { type: 'maze', name: 'متاهة جديدة', cols, rows, cells, starts, speed: 2.4, movement: 'ai', gateTime: 2, breakHp: 3, timeLimit: 180, pushRange: 3, pushSpeed: 1, stopOnWin: false };
 }
 
 export class MazeEditor {
@@ -45,7 +45,7 @@ export class MazeEditor {
             <button id="mzResize">تطبيق</button>
           </div>
           <label>طريقة الحركة الافتراضية
-            <select id="mzMove"><option value="auto">🤖 تلقائي (المربعات ترتد لحالها)</option><option value="player">🎮 تحكم (كل لاعب يحرك مربعه)</option></select>
+            <select id="mzMove"><option value="ai">🧠 ذكي (المربعات تدور طريق الفوز)</option><option value="auto">🤖 عشوائي (المربعات ترتد لحالها)</option><option value="player">🎮 تحكم (كل لاعب يحرك مربعه)</option></select>
           </label>
           <label>السرعة <span id="mzSpeedV"></span><input type="range" id="mzSpeed" min="1" max="6" step="0.2"></label>
           <div class="row2">
@@ -53,6 +53,12 @@ export class MazeEditor {
             <label>قوة البلوك <input type="number" id="mzHp" min="1" max="20"></label>
           </div>
           <label>الوقت الأقصى (ث) <input type="number" id="mzLimit" min="20" max="600"></label>
+          <div class="row2">
+            <label>مسافة الجدار اللي يدف (خانات) <input type="number" id="mzPushR" min="1" max="12"></label>
+            <label>سرعته <input type="number" id="mzPushS" min="0.3" max="4" step="0.1"></label>
+          </div>
+          <label class="chk"><input type="checkbox" id="mzStopWin"> ⏹ أول ما يفوز مربع يوقف السباق</label>
+          <div class="sub">⚠ الجدار اللي يدف: لو عصر مربع على جدار يموت 💀</div>
           <div class="sub">🚩 نقاط البداية: اختار "بداية" واضغط على الخانة (اضغط مرة ثانية للحذف). الترتيب = لون المربع.</div>
           <div class="stats" id="mzStats"></div>
           <div class="row2">
@@ -103,6 +109,7 @@ export class MazeEditor {
     $('#mzMove', r).value = this.map.movement;
     $('#mzSpeed', r).value = this.map.speed; $('#mzSpeedV', r).textContent = this.map.speed;
     $('#mzGate', r).value = this.map.gateTime; $('#mzHp', r).value = this.map.breakHp; $('#mzLimit', r).value = this.map.timeLimit;
+    $('#mzPushR', r).value = this.map.pushRange; $('#mzPushS', r).value = this.map.pushSpeed; $('#mzStopWin', r).checked = !!this.map.stopOnWin;
     this.render();
   }
 
@@ -114,6 +121,9 @@ export class MazeEditor {
     m.gateTime = +$('#mzGate', r).value || 0;
     m.breakHp = +$('#mzHp', r).value || 3;
     m.timeLimit = +$('#mzLimit', r).value || 180;
+    m.pushRange = +$('#mzPushR', r).value || 3;
+    m.pushSpeed = +$('#mzPushS', r).value || 1;
+    m.stopOnWin = $('#mzStopWin', r).checked;
     m.starts = m.starts.filter(i => i < m.cells.length && m.cells[i] !== T.WALL);
     return { ...m, type: 'maze', cells: [...m.cells], starts: [...m.starts] };
   }
@@ -223,6 +233,7 @@ export class MazeEditor {
       ctx.strokeRect(Math.min(a[0], b[0]) * S, Math.min(a[1], b[1]) * S, (Math.abs(a[0] - b[0]) + 1) * S, (Math.abs(a[1] - b[1]) + 1) * S);
     }
     const count = v => m.cells.filter(x => x === v).length;
-    $('#mzStats', this.root).textContent = `🚩 ${m.starts.length}/8 بداية · 🏁 ${count(T.FINISH)} نهاية · ⬛ ${count(T.BREAK)} ينكسر · 🎁 ${count(T.ITEM)} أيتم`;
+    const pushers = m.cells.filter(x => x >= T.PUSH_R && x <= T.PUSH_U).length, items = m.cells.filter(x => x === T.ITEM || (x >= T.I_SPEED && x <= T.I_FREEZE)).length;
+    $('#mzStats', this.root).textContent = `🚩 ${m.starts.length}/8 بداية · 🏁 ${count(T.FINISH)} نهاية · ⬛ ${count(T.BREAK)} ينكسر · 🎁 ${items} أداة · ➡ ${pushers} يدف`;
   }
 }
