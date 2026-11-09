@@ -11,6 +11,7 @@ const HALF = 5;                // half size of a racer square
 const FPS = 60;
 const COUNTDOWN = 150;         // frames before the race starts
 const PUSH_HOLD = 40;          // frames a pusher waits at each end
+const AI_SPEED = 0.7;          // smart squares move a bit slower so races are watchable
 
 export const T = {
   FLOOR: 0, WALL: 1, BREAK: 2, FINISH: 3, GATE: 4, BOOST: 5, SLOW: 6, ITEM: 7,
@@ -228,8 +229,8 @@ export class MazeGame {
       const p = { v, dx, dy, travel, ox, oy, x: ox, y: oy };
       this.pushers.push(p);
       this.cells[i] = T.FLOOR;
-      // cells this pusher sweeps through (AI avoids them while it's active)
-      for (let k = 1; k <= travel; k++) {
+      // cells this pusher sweeps through, including its home cell (AI avoids them while it's active)
+      for (let k = 0; k <= travel; k++) {
         const j = (r + dy * k) * this.cols + (c + dx * k);
         if (!this.track.has(j)) this.track.set(j, []);
         this.track.get(j).push(p);
@@ -237,8 +238,9 @@ export class MazeGame {
     }
   }
   // is this pusher out, or about to come out within ~0.4s?
-  pusherDanger(p) {
-    const now = this.pusherOffset(this.t), soon = this.pusherOffset(this.t + 35);
+  // can a square cross this pusher's path (taking `cross` frames) before the pusher comes out?
+  pusherDanger(p, cross = 20) {
+    const now = this.pusherOffset(this.t), soon = this.pusherOffset(this.t + cross);
     return now(p) > 0 || soon(p) > 0;
   }
   pusherOffset(t) {
@@ -362,7 +364,7 @@ export class MazeGame {
     return true;
   }
   speedOf(r) {
-    let s = this.baseSpeed;
+    let s = this.baseSpeed * (r.kind === 'ai' ? AI_SPEED : 1);
     if (this.t < r.boostUntil) s *= 1.7;
     if (this.tileAt(r.x, r.y).v === T.SLOW) s *= 0.45;
     return s;
@@ -419,7 +421,7 @@ export class MazeGame {
       target = [bc * MC + MC / 2, br * MC + MC / 2];
       // careful squares wait before stepping under an active pusher (brave ones risk it)
       const nextTrack = this.track.get(br * this.cols + bc);
-      r.hold = r.skill > 0.62 && !this.track.has(row * this.cols + c) && !!nextTrack && nextTrack.some(p => this.pusherDanger(p));
+      r.hold = r.skill > 0.62 && !this.track.has(row * this.cols + c) && !!nextTrack && nextTrack.some(p => this.pusherDanger(p, Math.ceil((MC + 2 * HALF) / this.speedOf(r)) + 8));
       if (r.hold) {
         // wait in the middle of the current cell so no part of the square sticks into the pusher's path
         const cx = c * MC + MC / 2 - r.x, cy = row * MC + MC / 2 - r.y, d = Math.sqrt(cx * cx + cy * cy);
@@ -457,7 +459,7 @@ export class MazeGame {
   // ---------- simulation ----------
   loop(t) {
     this.raf = requestAnimationFrame(tt => this.loop(tt));
-    this.acc += Math.min(100, t - this.last); this.last = t;
+    this.acc += Math.min(100, t - this.last) * (this.timeScale || 1); this.last = t;
     const stepMs = 1000 / FPS;
     while (this.acc >= stepMs) { this.acc -= stepMs; this.step(); }
     this.render();

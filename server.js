@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
+const { extraMazes, extraBreakout } = require('./builtin-maps');
 
 const PORT = process.env.PORT || 3000;
 const PUB = path.join(__dirname, 'public');
@@ -252,7 +253,7 @@ function buildMazes() {
 
 function addBuiltins() {
   for (const it of BUILTIN_ITEMS) store.items[it.id] = { ...it, icon: '', author: 'النظام', authorId: 'system', updated: 0 };
-  for (const m of [buildClassicMap(), buildRainbowMap(), ...buildMazes()]) store.maps[m.id] = m;
+  for (const m of [buildClassicMap(), buildRainbowMap(), ...extraBreakout(), ...buildMazes(), ...extraMazes(mazeFromArt)]) store.maps[m.id] = m;
 }
 
 // ---------- validation ----------

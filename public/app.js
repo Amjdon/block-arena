@@ -38,6 +38,7 @@ function stopGame() {
   if (state.game) { state.game.destroyGame(); state.game = null; }
   clearInterval(state.hudTimer);
   $('#overlay').classList.add('hidden');
+  $('#ffBtn').classList.add('hidden');
 }
 
 function startGame(map, items, { online = false, seed, players = [], back = 'sandbox' } = {}) {
@@ -150,7 +151,9 @@ function startMaze(map, { online = false, seed, players = [], movement, pick = 0
           net.send('fin', { cleared: mine.place === 1, place: mine.place || 99, time: mine.time ?? 999, pick });
           overlay(`<h2>🏁 خلص السباق</h2><p>لونك ${colorDot(pick)} ${esc(RACER_NAMES[pick])} جا ${mine.place ? '#' + mine.place : '❌'}</p>${raceTable(res.racers, pick)}<p class="sub">ننتظر النتائج…</p>`);
         } else {
-          overlay(`<h2>${mine.place === 1 ? '🏆 لونك فاز!' : '🏁 خلص السباق'}</h2><p>لونك ${colorDot(pick)} ${esc(RACER_NAMES[pick])} جا ${mine.place ? '#' + mine.place : '❌'}</p>${raceTable(res.racers, pick)}
+          const st = recordBet(mine.place === 1);
+          overlay(`<h2>${mine.place === 1 ? '🏆 لونك فاز!' : '🏁 خلص السباق'}</h2><p>لونك ${colorDot(pick)} ${esc(RACER_NAMES[pick])} جا ${mine.place ? '#' + mine.place : mine.dead ? '💀' : '❌'}</p>${raceTable(res.racers, pick)}
+            <p class="sub">🎯 رهاناتك: فزت ${st.wins} من ${st.races} · أفضل سلسلة فوز ${st.best}</p>
             <div class="row2 center"><button class="primary" id="ovRetry">🔁 سباق ثاني</button><button id="ovBack">رجوع</button></div>`);
           $('#ovRetry').onclick = () => chooseMaze(map, back);
           $('#ovBack').onclick = () => show(back);
@@ -168,12 +171,27 @@ function startMaze(map, { online = false, seed, players = [], movement, pick = 0
     },
   });
   state.game = game;
+  // fast-forward for solo races you're watching
+  const ff = $('#ffBtn');
+  ff.classList.toggle('hidden', online || !watch);
+  game.timeScale = 1; ff.textContent = '⏩ x1';
+  ff.onclick = () => { game.timeScale = { 1: 2, 2: 4, 4: 1 }[game.timeScale]; ff.textContent = '⏩ x' + game.timeScale; };
   state.hudTimer = setInterval(() => {
     $('#hudScore').textContent = '⏱ ' + (game.t / 60).toFixed(1);
     $('#hudLives').innerHTML = watch ? `${colorDot(pick)} ${esc(RACER_NAMES[pick])}` : '🎮';
     $('#hudLeft').textContent = `🏁 ${game.racers.filter(r => r.done).length}/${game.racers.length}`;
     if (online && movement === 'player') net.send('st', { d: { ...game.snapshot(), k: pending.splice(0) } });
   }, 100);
+}
+
+// solo betting stats, kept in this browser
+function recordBet(won) {
+  let st = { races: 0, wins: 0, streak: 0, best: 0 };
+  try { st = { ...st, ...JSON.parse(localStorage.getItem('ba_bets') || '{}') }; } catch {}
+  st.races++;
+  if (won) { st.wins++; st.streak++; st.best = Math.max(st.best, st.streak); } else st.streak = 0;
+  try { localStorage.setItem('ba_bets', JSON.stringify(st)); } catch {}
+  return st;
 }
 
 function overlay(html) {
@@ -194,12 +212,39 @@ onShow.sandbox = async () => {
   await Promise.all([loadMaps(), loadItems()]);
   renderMapGrid();
 };
+let mapFilter = 'all';
 $('#mapSearch').oninput = () => renderMapGrid();
-function renderMapGrid() {
+$('#mapSort').onchange = () => renderMapGrid();
+$$('#mapTabs [data-f]').forEach(b => b.onclick = () => { mapFilter = b.dataset.f; renderMapGrid(); });
+$('#randomMap').onclick = () => {
+  const list = filteredMaps();
+  if (!list.length) return toast('ما فيه مابات');
+  const m = list[Math.floor(Math.random() * list.length)];
+  isMaze(m) ? chooseMaze(m) : startGame(m, state.items);
+};
+$('#quickRace').onclick = async () => {
+  if (!state.maps.length) await loadMaps();
+  const mazes = state.maps.filter(isMaze);
+  chooseMaze(mazes[Math.floor(Math.random() * mazes.length)], 'home');
+};
+function filteredMaps() {
   const q = $('#mapSearch').value.trim().toLowerCase();
+  const list = state.maps.filter(m => (!q || (m.name + m.author).toLowerCase().includes(q))
+    && (mapFilter === 'all' || (mapFilter === 'maze' && isMaze(m)) || (mapFilter === 'breakout' && !isMaze(m)) || (mapFilter === 'mine' && mine(m))));
+  const sort = $('#mapSort').value;
+  if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  else if (sort === 'size') list.sort((a, b) => b.cols * b.rows - a.cols * a.rows);
+  return list;
+}
+function renderMapGrid() {
   const grid = $('#mapGrid');
   grid.innerHTML = '';
-  for (const m of state.maps.filter(m => !q || (m.name + m.author).toLowerCase().includes(q))) {
+  const list = filteredMaps();
+  $$('#mapTabs [data-f]').forEach(b => b.classList.toggle('on', b.dataset.f === mapFilter));
+  const count = f => state.maps.filter(m => f === 'all' || (f === 'maze' && isMaze(m)) || (f === 'breakout' && !isMaze(m)) || (f === 'mine' && mine(m))).length;
+  $$('#mapTabs [data-f]').forEach(b => { b.querySelector('i').textContent = count(b.dataset.f); });
+  if (!list.length) grid.innerHTML = '<div class="sub">ما فيه مابات هنا…</div>';
+  for (const m of list) {
     const el = document.createElement('div');
     el.className = 'map-card';
     const info = isMaze(m) ? `<span class="badge">🏁 متاهة</span> · ${m.starts.length} مربعات` : `${m.items.length} أيتم`;

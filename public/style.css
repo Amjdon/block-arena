@@ -127,3 +127,10 @@ tr.me td { background: rgba(25, 181, 216, .15); }
 #overlay table .dot { vertical-align: middle; }
 
 label.chk.center { justify-content: center; }
+
+/* sandbox tabs */
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.tabs button i { font-style: normal; background: #111; border-radius: 10px; padding: 0 7px; font-size: .8em; color: var(--muted); }
+.tabs button.on { background: var(--accent); border-color: var(--accent); outline: none; }
+.tabs button.on i { color: #fff; background: rgba(0,0,0,.25); }
+#ffBtn { padding: 4px 10px; }

@@ -28,7 +28,7 @@
       <div class="card">
         <h2>🎮 العب</h2>
         <p class="sub">اختار ماب من الساندبوكس والعب سولو، أو سوّ غرفة وادعي أصحابك.</p>
-        <button class="primary big" data-go="sandbox">▶ العب سولو / اختار ماب</button>
+        <div class="row2"><button class="primary big" data-go="sandbox">▶ العب سولو / اختار ماب</button><button class="big" id="quickRace">🏁 سباق سريع</button></div>
         <hr>
         <h3>🌐 أونلاين</h3>
         <div class="row2">
@@ -82,7 +82,7 @@
   <section id="play" class="screen">
     <div class="play-wrap">
       <div class="play-main">
-        <div class="hud"><span id="hudScore">0</span><span id="hudLives"></span><span id="hudLeft"></span><button id="exitGame">✖ خروج</button></div>
+        <div class="hud"><span id="hudScore">0</span><span id="hudLives"></span><span id="hudLeft"></span><button id="ffBtn" class="hidden" title="سرعة العرض">⏩ x1</button><button id="exitGame">✖ خروج</button></div>
         <div class="canvas-box" dir="ltr"><canvas id="gameCanvas"></canvas></div>
       </div>
       <aside id="peers"></aside>
@@ -91,7 +91,8 @@
 
   <!-- SANDBOX -->
   <section id="sandbox" class="screen">
-    <div class="bar"><h2>📦 الساندبوكس</h2><input id="mapSearch" placeholder="بحث…"><button data-go="editor" class="primary">➕ سوّ ماب</button></div>
+    <div class="bar"><h2>📦 الساندبوكس</h2><input id="mapSearch" placeholder="بحث…"><select id="mapSort"><option value="new">🕒 الأحدث</option><option value="name">🔤 الاسم</option><option value="size">📐 الحجم</option></select><button id="randomMap">🎲 ماب عشوائي</button><button data-go="editor" class="primary">➕ ماب بلوكات</button><button data-go="mazeEditor" class="primary">➕ متاهة</button></div>
+    <div class="tabs" id="mapTabs"><button data-f="all">الكل <i></i></button><button data-f="maze">🏁 متاهات <i></i></button><button data-f="breakout">🧱 بلوكات <i></i></button><button data-f="mine">✍ حقتي <i></i></button></div>
     <div id="mapGrid" class="map-grid"></div>
   </section>
 
