@@ -1,6 +1,8 @@
 import { Game, Mini, drawMapPreview, getImg, checkItemCode } from './game.js';
 import { PixelEditor, fileToDataURL } from './pixel.js';
 import { MapEditor } from './editor.js';
+import { MazeGame, drawMazePreview, RACER_COLORS, RACER_NAMES } from './maze.js';
+import { MazeEditor } from './maze-editor.js';
 import { net } from './net.js';
 import { $, $$, esc, api, toast, profile, saveProfile } from './store.js';
 import { play, isMuted, setMuted, getVolume, setVolume, SOUND_NAMES } from './sound.js';
@@ -39,6 +41,7 @@ function stopGame() {
 }
 
 function startGame(map, items, { online = false, seed, players = [], back = 'sandbox' } = {}) {
+  stopGame();
   show('play');
   state.online = online; state.back = back;
   const pending = { k: [], set: [] };
@@ -86,6 +89,85 @@ function startGame(map, items, { online = false, seed, players = [], back = 'san
   }, 100);
 }
 
+// ================= maze race =================
+const isMaze = m => m && m.type === 'maze';
+const colorDot = k => `<span class="dot" style="background:${RACER_COLORS[k % 8]}"></span>`;
+
+function chooseMaze(map, back = 'sandbox') {
+  let mv = map.movement || 'auto', pick = 0;
+  const n = Math.max(1, map.starts.length);
+  overlay(`<h2>🏁 ${esc(map.name)}</h2>
+    <div class="sub">طريقة الحركة</div>
+    <div class="row2 center"><button data-mv="auto">🤖 تلقائي</button><button data-mv="player">🎮 أتحكم</button></div>
+    <div class="sub" id="mzHint"></div>
+    <div class="cpicks">${Array.from({ length: n }, (_, k) => `<button class="cpick" data-k="${k}" style="background:${RACER_COLORS[k]}" title="${RACER_NAMES[k]}"></button>`).join('')}</div>
+    <div class="row2 center"><button class="primary" id="mzGo">▶ ابدأ</button><button id="mzCancel">إلغاء</button></div>`);
+  const sync = () => {
+    $$('[data-mv]').forEach(b => b.classList.toggle('on', b.dataset.mv === mv));
+    $$('.cpick').forEach(b => b.classList.toggle('on', +b.dataset.k === pick));
+    $('#mzHint').textContent = mv === 'auto' ? `راهن على لون: ${RACER_NAMES[pick]} — المربعات تتحرك لحالها` : `لونك: ${RACER_NAMES[pick]} — تحرّك بالأسهم/WASD أو اسحب بإصبعك`;
+  };
+  $$('[data-mv]').forEach(b => b.onclick = () => { mv = b.dataset.mv; sync(); });
+  $$('.cpick').forEach(b => b.onclick = () => { pick = +b.dataset.k; sync(); });
+  $('#mzGo').onclick = () => startMaze(map, { movement: mv, pick, back });
+  $('#mzCancel').onclick = () => $('#overlay').classList.add('hidden');
+  sync();
+}
+
+function raceTable(racers, highlight) {
+  const order = [...racers].sort((a, b) => (a.place || 99) - (b.place || 99));
+  const medals = ['🥇', '🥈', '🥉'];
+  return `<table>${order.map(r => `<tr class="${r.k === highlight ? 'me' : ''}"><td>${r.place ? medals[r.place - 1] || '#' + r.place : '❌'}</td><td>${colorDot(r.k)} ${esc(r.name)}</td><td>${r.time != null ? r.time + 'ث' : '—'}</td></tr>`).join('')}</table>`;
+}
+
+function startMaze(map, { online = false, seed, players = [], movement, pick = 0, back = 'sandbox' } = {}) {
+  stopGame();
+  show('play');
+  state.online = online; state.back = back; state.peers = {};
+  $('#peers').innerHTML = '';
+  movement = movement || map.movement || 'auto';
+  let racers;
+  if (movement === 'auto') racers = map.starts.map((_, k) => ({ color: RACER_COLORS[k], name: RACER_NAMES[k], kind: 'auto' }));
+  else if (online) racers = players.map((p, k) => ({ id: p.id, color: RACER_COLORS[k % 8], name: p.name, kind: p.id === net.id ? 'local' : 'remote' }));
+  else racers = map.starts.map((_, k) => ({ color: RACER_COLORS[k], name: k === pick ? profile.name : RACER_NAMES[k], kind: k === pick ? 'local' : 'auto' }));
+  const pending = [];
+  const game = new MazeGame($('#gameCanvas'), map, {
+    seed, movement, racers, online, pick: movement === 'auto' ? pick : -1,
+    onToast: toast,
+    onBreak: i => pending.push(i),
+    onEnd: res => {
+      if (movement === 'auto') {
+        const mine = res.racers[pick] || {};
+        if (online) {
+          net.send('fin', { cleared: mine.place === 1, place: mine.place || 99, time: mine.time ?? 999, pick });
+          overlay(`<h2>🏁 خلص السباق</h2><p>لونك ${colorDot(pick)} ${esc(RACER_NAMES[pick])} جا ${mine.place ? '#' + mine.place : '❌'}</p>${raceTable(res.racers, pick)}<p class="sub">ننتظر النتائج…</p>`);
+        } else {
+          overlay(`<h2>${mine.place === 1 ? '🏆 لونك فاز!' : '🏁 خلص السباق'}</h2><p>لونك ${colorDot(pick)} ${esc(RACER_NAMES[pick])} جا ${mine.place ? '#' + mine.place : '❌'}</p>${raceTable(res.racers, pick)}
+            <div class="row2 center"><button class="primary" id="ovRetry">🔁 سباق ثاني</button><button id="ovBack">رجوع</button></div>`);
+          $('#ovRetry').onclick = () => chooseMaze(map, back);
+          $('#ovBack').onclick = () => show(back);
+        }
+      } else if (online) {
+        net.send('fin', { cleared: res.cleared, time: res.cleared ? res.time : 9998 });
+        overlay(`<h2>${res.cleared ? '🏁 وصلت!' : '⏰ خلص الوقت'}</h2><p>وقتك: <b>${res.cleared ? res.time + 'ث' : '—'}</b></p><p class="sub">ننتظر باقي اللاعبين…</p>`);
+      } else {
+        const me = res.racers.find(r => r.k === pick) || {};
+        overlay(`<h2>${me.place === 1 ? '🏆 فزت!' : res.cleared ? '🏁 وصلت!' : '⏰ خلص الوقت'}</h2><p>${res.cleared ? `المركز #${me.place} · ${res.time}ث` : ''}</p>${raceTable(res.racers, pick)}
+          <div class="row2 center"><button class="primary" id="ovRetry">🔁 مرة ثانية</button><button id="ovBack">رجوع</button></div>`);
+        $('#ovRetry').onclick = () => startMaze(map, { movement, pick, back });
+        $('#ovBack').onclick = () => show(back);
+      }
+    },
+  });
+  state.game = game;
+  state.hudTimer = setInterval(() => {
+    $('#hudScore').textContent = '⏱ ' + (game.t / 60).toFixed(1);
+    $('#hudLives').innerHTML = movement === 'auto' ? `${colorDot(pick)} ${esc(RACER_NAMES[pick])}` : '🎮';
+    $('#hudLeft').textContent = `🏁 ${game.racers.filter(r => r.done).length}/${game.racers.length}`;
+    if (online && movement === 'player') net.send('st', { d: { ...game.snapshot(), k: pending.splice(0) } });
+  }, 100);
+}
+
 function overlay(html) {
   $('#overlayBox').innerHTML = html;
   $('#overlay').classList.remove('hidden');
@@ -94,7 +176,7 @@ function overlay(html) {
 $('#exitGame').onclick = () => {
   if (state.online && state.game && !state.game.over) {
     if (!confirm('تطلع من التحدي؟ بتنحسب منسحب.')) return;
-    net.send('fin', { score: state.game.score, cleared: false, time: 9999 });
+    net.send('fin', { score: state.game.score || 0, cleared: false, time: 9999, place: state.game.kind === 'maze' ? 99 : undefined });
   }
   show(state.online && state.room ? 'room' : state.back || 'sandbox');
 };
@@ -112,16 +194,17 @@ function renderMapGrid() {
   for (const m of state.maps.filter(m => !q || (m.name + m.author).toLowerCase().includes(q))) {
     const el = document.createElement('div');
     el.className = 'map-card';
-    el.innerHTML = `<canvas></canvas><div><b>${esc(m.name)}</b><div class="sub">✍ ${esc(m.author)} · ${m.cols}×${m.rows} · ${m.items.length} أيتم</div></div>
+    const info = isMaze(m) ? `<span class="badge">🏁 متاهة</span> · ${m.starts.length} مربعات` : `${m.items.length} أيتم`;
+    el.innerHTML = `<canvas></canvas><div><b>${esc(m.name)}</b><div class="sub">✍ ${esc(m.author)} · ${m.cols}×${m.rows} · ${info}</div></div>
       <div class="acts"><button class="primary" data-a="solo">▶ سولو</button><button data-a="priv">🔒 تحدي</button><button data-a="pub">🌍 لوبي</button><button data-a="edit">✏ ${mine(m) ? 'تعديل' : 'نسخة'}</button>${mine(m) ? '<button data-a="del">🗑</button>' : ''}</div>`;
-    drawMapPreview($('canvas', el), m, 4);
-    el.querySelector('[data-a=solo]').onclick = () => startGame(m, state.items);
+    if (isMaze(m)) drawMazePreview($('canvas', el), m, 8); else drawMapPreview($('canvas', el), m, 4);
+    el.querySelector('[data-a=solo]').onclick = () => (isMaze(m) ? chooseMaze(m) : startGame(m, state.items));
     el.querySelector('[data-a=priv]').onclick = () => createRoom(false, m.id);
     el.querySelector('[data-a=pub]').onclick = () => createRoom(true, m.id);
     el.querySelector('[data-a=edit]').onclick = () => {
       const copy = structuredClone(m);
       if (!mine(m)) { delete copy.id; copy.name += ' (نسخة)'; }
-      show('editor'); editor.load(copy);
+      if (isMaze(m)) { show('mazeEditor'); mazeEditor.load(copy); } else { show('editor'); editor.load(copy); }
     };
     el.querySelector('[data-a=del]')?.addEventListener('click', async () => {
       if (!confirm(`تحذف "${m.name}"؟`)) return;
@@ -145,6 +228,17 @@ const editor = new MapEditor($('#editorRoot'), {
     } catch (e) { toast('❌ ' + e.message); }
   },
 });
+const mazeEditor = new MazeEditor($('#mazeEditorRoot'), {
+  onTest: map => chooseMaze(map, 'mazeEditor'),
+  onSave: async map => {
+    try {
+      const saved = await api('maps', { ...map, author: profile.name, authorId: profile.authorId });
+      mazeEditor.map.id = saved.id;
+      toast('✅ انرفعت المتاهة للساندبوكس');
+    } catch (e) { toast('❌ ' + e.message); }
+  },
+});
+
 onShow.editor = async () => {
   await loadItems();
   if (!editorLoaded) { editorLoaded = true; }
@@ -295,6 +389,7 @@ $('#copyInvite').onclick = async () => {
 };
 $('#roomPublic').onchange = e => net.send('setPublic', { public: e.target.checked });
 $('#roomMap').onchange = e => net.send('setMap', { mapId: e.target.value });
+$('#roomMove').onchange = e => net.send('setMovement', { movement: e.target.value });
 $('#startBtn').onclick = () => net.send('start');
 $('#chatForm').onsubmit = e => { e.preventDefault(); const v = $('#chatIn').value.trim(); if (v) net.send('chat', { msg: v }); $('#chatIn').value = ''; };
 
@@ -327,11 +422,27 @@ net.on('room', async m => {
   $('#roomCode').textContent = m.code;
   $('#roomPublic').checked = m.public; $('#roomPublic').disabled = !isHost;
   const sel = $('#roomMap');
-  sel.innerHTML = state.maps.map(mp => `<option value="${esc(mp.id)}" ${mp.id === m.mapId ? 'selected' : ''}>${esc(mp.name)} — ${esc(mp.author)}</option>`).join('');
+  sel.innerHTML = state.maps.map(mp => `<option value="${esc(mp.id)}" ${mp.id === m.mapId ? 'selected' : ''}>${isMaze(mp) ? '🏁 ' : '🧱 '}${esc(mp.name)} — ${esc(mp.author)}</option>`).join('');
+  const maze = m.mapType === 'maze';
+  $('#mazeOpts').classList.toggle('hidden', !maze);
+  if (maze) {
+    const mp = state.maps.find(x => x.id === m.mapId);
+    const n = Math.max(1, mp?.starts?.length || 4);
+    $('#roomMove').value = m.movement; $('#roomMove').disabled = !isHost || m.started;
+    const me = m.players.find(p => p.id === net.id);
+    if (m.movement === 'auto') {
+      $('#roomPickHint').textContent = 'راهن على لون (المربعات تتحرك لحالها):';
+      $('#roomPicks').innerHTML = Array.from({ length: n }, (_, k) => `<button class="cpick ${me?.pick === k ? 'on' : ''}" data-k="${k}" style="background:${RACER_COLORS[k]}" title="${RACER_NAMES[k]}"></button>`).join('');
+      $$('#roomPicks .cpick').forEach(b => b.onclick = () => net.send('pick', { i: +b.dataset.k }));
+    } else {
+      $('#roomPickHint').textContent = 'كل لاعب يتحكم بمربعه — اللون حسب ترتيب الدخول.';
+      $('#roomPicks').innerHTML = '';
+    }
+  }
   sel.disabled = !isHost || m.started;
   $('#startBtn').disabled = !isHost || m.started;
   $('#roomHint').textContent = isHost ? 'انت الهوست: اختار الماب وابدأ متى ما جهزتوا.' : 'ننتظر الهوست يبدأ…';
-  $('#roomPlayers').innerHTML = m.players.map(p => `<div class="li"><span class="dot" style="background:${esc(p.color)}"></span><div class="grow">${esc(p.name)}${p.id === net.id ? ' (انت)' : ''}</div>${p.id === m.hostId ? '👑' : ''}</div>`).join('');
+  $('#roomPlayers').innerHTML = m.players.map((p, idx) => `<div class="li">${maze ? colorDot(m.movement === 'auto' ? (p.pick ?? idx) : idx) : `<span class="dot" style="background:${esc(p.color)}"></span>`}<div class="grow">${esc(p.name)}${p.id === net.id ? ' (انت)' : ''}</div>${p.id === m.hostId ? '👑' : ''}</div>`).join('');
 });
 net.on('left', () => { state.room = null; });
 net.on('chat', m => {
@@ -342,11 +453,17 @@ net.on('chat', m => {
 });
 net.on('start', m => {
   play('start');
+  if (isMaze(m.map)) {
+    const idx = m.players.findIndex(p => p.id === net.id);
+    const me = m.players[idx];
+    return startMaze(m.map, { online: true, seed: m.seed, players: m.players, movement: m.movement, pick: me?.pick ?? (idx % Math.max(1, m.map.starts.length)) });
+  }
   const hasCode = Object.values(m.items).some(it => !['multi3', 'wide', 'slow', 'fire', 'laser', 'shield', 'life', 'bomb'].includes(it.id));
   startGame(m.map, m.items, { online: true, seed: m.seed, players: m.players });
   if (hasCode) toast('ℹ الماب فيه أيتمز بكود مخصص (يشتغل في بيئة معزولة)');
 });
 net.on('peer', m => {
+  if (state.game?.kind === 'maze') return state.game.applyPeer(m.id, m.d);
   const p = state.peers[m.id]; if (!p) return;
   p.mini.apply(m.d);
   $('.pst', p.el).textContent = `⭐ ${m.d.s} · ❤ ${m.d.l} · 🟥 ${m.d.r}`;
@@ -359,7 +476,11 @@ net.on('fin', m => {
 net.on('results', m => {
   if (!$('#play').classList.contains('active')) return;
   const medals = ['🥇', '🥈', '🥉'];
-  overlay(`<h2>🏁 النتائج</h2><table>${m.list.map((r, i) => `<tr><td>${medals[i] || i + 1}</td><td>${esc(r.name)}${r.id === net.id ? ' (انت)' : ''}</td><td>${r.cleared ? '🏆' : '💀'}</td><td>⭐ ${r.score}</td><td>${r.time >= 9999 ? 'انسحب' : r.time + 'ث'}</td></tr>`).join('')}</table>
+  const maze = state.game?.kind === 'maze';
+  const cell = r => (maze
+    ? (r.pick != null ? `<td>${colorDot(r.pick)} #${r.place ?? '—'}</td>` : `<td>${r.cleared ? '🏁' : '❌'}</td>`)
+    : `<td>${r.cleared ? '🏆' : '💀'}</td><td>⭐ ${r.score}</td>`);
+  overlay(`<h2>🏁 النتائج</h2><table>${m.list.map((r, i) => `<tr class="${r.id === net.id ? 'me' : ''}"><td>${medals[i] || i + 1}</td><td>${esc(r.name)}${r.id === net.id ? ' (انت)' : ''}</td>${cell(r)}<td>${r.time >= 9998 ? (r.time >= 9999 ? 'انسحب' : '—') : r.time + 'ث'}</td></tr>`).join('')}</table>
     <button class="primary" id="ovRoom">↩ رجوع للغرفة</button>`);
   $('#ovRoom').onclick = () => show('room');
 });

@@ -13,6 +13,7 @@
     <button data-screen="home">الرئيسية</button>
     <button data-screen="sandbox">الساندبوكس</button>
     <button data-screen="editor">صانع المابات</button>
+    <button data-screen="mazeEditor">صانع المتاهات</button>
     <button data-screen="items">مختبر الأيتمز</button>
     <button data-screen="profile">المضرب</button>
   </nav>
@@ -56,6 +57,11 @@
           <label class="chk"><input type="checkbox" id="roomPublic"> لوبي عام</label>
         </div>
         <label>الماب <select id="roomMap"></select></label>
+        <div id="mazeOpts" class="hidden">
+          <label>طريقة الحركة <select id="roomMove"><option value="auto">🤖 تلقائي (راهن على لون)</option><option value="player">🎮 كل واحد يتحكم بمربعه</option></select></label>
+          <div class="sub" id="roomPickHint"></div>
+          <div class="cpicks" id="roomPicks"></div>
+        </div>
         <div id="roomPlayers" class="list"></div>
         <div class="row2">
           <button class="primary big" id="startBtn">▶ ابدأ التحدي</button>
@@ -80,7 +86,6 @@
       </div>
       <aside id="peers"></aside>
     </div>
-    <div id="overlay" class="overlay hidden"><div class="card" id="overlayBox"></div></div>
   </section>
 
   <!-- SANDBOX -->
@@ -91,6 +96,9 @@
 
   <!-- EDITOR -->
   <section id="editor" class="screen"><div id="editorRoot"></div></section>
+
+  <!-- MAZE EDITOR -->
+  <section id="mazeEditor" class="screen"><div id="mazeEditorRoot"></div></section>
 
   <!-- ITEMS -->
   <section id="items" class="screen">
@@ -150,6 +158,7 @@
     </div>
   </section>
 </main>
+<div id="overlay" class="overlay hidden"><div class="card" id="overlayBox"></div></div>
 <div id="toast"></div>
 <script type="module" src="app.js"></script>
 </body>

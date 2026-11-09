@@ -92,9 +92,47 @@ function buildRainbowMap() {
   };
 }
 
+// Maze race sample. # wall . floor B breakable F finish G gate > boost ~ mud ? item 1-8 start
+function buildSampleMaze() {
+  const art = [
+    '####################',
+    '#12345678#.....?...#',
+    '#........#.######..#',
+    '#GGGGGGGG#.#....#..#',
+    '#........#.#.?..#..#',
+    '#...?....#.#....B..#',
+    '#........#.###.##..#',
+    '#..~~~~..#.........#',
+    '#........#####.#####',
+    '#..>>>>..........#.#',
+    '###.######.#####.#.#',
+    '#.....#....#.....#.#',
+    '#.###.#.####.###.#.#',
+    '#.#FF.#......#B..#.#',
+    '#.#FF.#####..#.###.#',
+    '#.#####...#..#.....#',
+    '#.....B...#..#####.#',
+    '#.###########.....>#',
+    '#..................#',
+    '####################',
+  ];
+  const cols = 20, rows = art.length, cells = [], starts = [];
+  const code = { '#': 1, '.': 0, B: 2, F: 3, G: 4, '>': 5, '~': 6, '?': 7 };
+  art.forEach((line, r) => {
+    for (let c = 0; c < cols; c++) {
+      const ch = line[c] || '#';
+      if (/[1-8]/.test(ch)) { starts[+ch - 1] = r * cols + c; cells.push(0); } else cells.push(code[ch] ?? 1);
+    }
+  });
+  return {
+    id: 'maze1', type: 'maze', name: 'سباق المتاهة', author: 'النظام', authorId: 'system', cols, rows, cells,
+    starts: starts.filter(x => x !== undefined), speed: 2.4, movement: 'auto', gateTime: 2, breakHp: 3, timeLimit: 180, updated: 3,
+  };
+}
+
 function addBuiltins() {
   for (const it of BUILTIN_ITEMS) store.items[it.id] = { ...it, icon: '', author: 'النظام', authorId: 'system', updated: 0 };
-  for (const m of [buildClassicMap(), buildRainbowMap()]) store.maps[m.id] = m;
+  for (const m of [buildClassicMap(), buildRainbowMap(), buildSampleMaze()]) store.maps[m.id] = m;
 }
 
 // ---------- validation ----------
@@ -114,6 +152,19 @@ function cleanMap(o) {
     dropChance: num(o.dropChance, 0, 1, 0.1), ballSpeed: num(o.ballSpeed, 2, 12, 5), lives: Math.round(num(o.lives, 1, 9, 3)),
     paddleWidth: num(o.paddleWidth, 30, 300, 100),
     items: (Array.isArray(o.items) ? o.items : []).slice(0, 60).map(x => str(x, 64)),
+  };
+}
+
+function cleanMaze(o) {
+  const cols = Math.round(num(o.cols, 6, 60, 0)), rows = Math.round(num(o.rows, 6, 60, 0));
+  if (!Array.isArray(o.cells) || o.cells.length !== cols * rows || !o.cells.every(v => Number.isInteger(v) && v >= 0 && v <= 7)) return 'خلايا المتاهة غير صحيحة';
+  const starts = [...new Set((Array.isArray(o.starts) ? o.starts : []).filter(i => Number.isInteger(i) && i >= 0 && i < cols * rows))].slice(0, 8);
+  if (!starts.length) return 'لازم نقطة بداية';
+  if (!o.cells.includes(3)) return 'لازم خط نهاية';
+  return {
+    type: 'maze', name: str(o.name, 40) || 'متاهة', author: str(o.author, 24) || 'مجهول', authorId: str(o.authorId, 64),
+    cols, rows, cells: o.cells, starts, speed: num(o.speed, 1, 6, 2.4), movement: o.movement === 'player' ? 'player' : 'auto',
+    gateTime: num(o.gateTime, 0, 30, 2), breakHp: Math.round(num(o.breakHp, 1, 20, 3)), timeLimit: num(o.timeLimit, 20, 600, 180),
   };
 }
 
@@ -148,7 +199,7 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'POST') {
     let body; try { body = JSON.parse(await readBody(req, 4e6)); } catch { return json(res, 400, { error: 'بيانات غير صحيحة' }); }
-    const clean = kind === 'maps' ? cleanMap(body) : cleanItem(body);
+    const clean = kind === 'maps' ? (body.type === 'maze' ? cleanMaze(body) : cleanMap(body)) : cleanItem(body);
     if (typeof clean === 'string') return json(res, 400, { error: clean });
     let newId = body.id && coll[body.id] && coll[body.id].authorId === clean.authorId && clean.authorId !== 'system' ? body.id : null;
     if (!newId) newId = crypto.randomBytes(5).toString('hex');
@@ -190,7 +241,8 @@ function roomInfo(room) {
   const map = store.maps[room.mapId];
   return {
     t: 'room', code: room.code, hostId: room.hostId, public: room.public, mapId: room.mapId, mapName: map ? map.name : '؟',
-    started: room.started, players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color })),
+    mapType: map && map.type === 'maze' ? 'maze' : 'breakout', movement: room.movement || (map && map.movement) || 'auto',
+    started: room.started, players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, pick: p.pick ?? null })),
   };
 }
 function newCode() {
@@ -216,7 +268,7 @@ function checkFinished(room) {
   if (ids.length && ids.every(id => room.results[id])) {
     room.started = false;
     const list = ids.map(id => ({ id, name: room.players.get(id).name, ...room.results[id] }))
-      .sort((a, b) => (b.cleared - a.cleared) || (b.score - a.score) || (a.time - b.time));
+      .sort((a, b) => (b.cleared - a.cleared) || ((a.place ?? 99) - (b.place ?? 99)) || (b.score - a.score) || (a.time - b.time));
     broadcast(room, { t: 'results', list });
     broadcast(room, roomInfo(room));
   }
@@ -224,11 +276,12 @@ function checkFinished(room) {
 
 wss.on('connection', ws => {
   ws.id = crypto.randomBytes(4).toString('hex');
-  ws.name = 'لاعب'; ws.color = '#ff6b5a';
+  ws.name = 'لاعب'; ws.color = '#ff6b5a'; ws.pick = null;
   send(ws, { t: 'welcome', id: ws.id });
   ws.on('close', () => leave(ws));
   ws.on('message', raw => {
     let m; try { m = JSON.parse(raw); } catch { return; }
+    try {
     const room = ws.room, isHost = room && room.hostId === ws.id;
     switch (m.t) {
       case 'hello':
@@ -253,7 +306,13 @@ wss.on('connection', ws => {
       }
       case 'leave': leave(ws); send(ws, { t: 'left' }); break;
       case 'setMap':
-        if (isHost && !room.started && store.maps[m.mapId]) { room.mapId = m.mapId; broadcast(room, roomInfo(room)); }
+        if (isHost && !room.started && store.maps[m.mapId]) { room.mapId = m.mapId; room.movement = null; broadcast(room, roomInfo(room)); }
+        break;
+      case 'setMovement':
+        if (isHost && !room.started) { room.movement = m.movement === 'player' ? 'player' : 'auto'; broadcast(room, roomInfo(room)); }
+        break;
+      case 'pick':
+        if (room && !room.started) { ws.pick = Number.isInteger(m.i) && m.i >= 0 && m.i < 8 ? m.i : null; broadcast(room, roomInfo(room)); }
         break;
       case 'setPublic':
         if (isHost) { room.public = !!m.public; broadcast(room, roomInfo(room)); }
@@ -261,22 +320,24 @@ wss.on('connection', ws => {
       case 'start': {
         if (!isHost || room.started) return;
         const map = store.maps[room.mapId]; if (!map) return;
-        const items = {}; for (const id of map.items) if (store.items[id]) items[id] = store.items[id];
+        const items = {}; for (const id of map.items || []) if (store.items[id]) items[id] = store.items[id];
         room.started = true; room.results = {};
-        broadcast(room, { t: 'start', seed: Math.floor(Math.random() * 2 ** 31), map, items, players: roomInfo(room).players });
+        const info = roomInfo(room);
+        broadcast(room, { t: 'start', seed: Math.floor(Math.random() * 2 ** 31), map, items, players: info.players, movement: info.movement });
         broadcast(room, roomInfo(room));
         break;
       }
       case 'st': if (room && room.started) broadcast(room, { t: 'peer', id: ws.id, d: m.d }, ws); break;
       case 'fin':
         if (room && room.started && !room.results[ws.id]) {
-          room.results[ws.id] = { score: num(m.score, 0, 1e9, 0), cleared: !!m.cleared, time: num(m.time, 0, 1e6, 0) };
+          room.results[ws.id] = { score: num(m.score, 0, 1e9, 0), cleared: !!m.cleared, time: num(m.time, 0, 1e6, 0), place: num(m.place, 1, 99, null), pick: num(m.pick, 0, 7, null) };
           broadcast(room, { t: 'fin', id: ws.id, ...room.results[ws.id] });
           checkFinished(room);
         }
         break;
       case 'chat': if (room) broadcast(room, { t: 'chat', name: ws.name, msg: str(m.msg, 200) }); break;
     }
+    } catch (e) { console.error("ws handler error:", e.message); }
   });
 });
 
